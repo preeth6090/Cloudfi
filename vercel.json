@@ -2,8 +2,10 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "framework": null,
-  "env": {
-    "VITE_API_URL": "https://backend-production-4927.up.railway.app"
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://backend-production-4927.up.railway.app"
+    }
   },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
