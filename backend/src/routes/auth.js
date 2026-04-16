@@ -62,10 +62,8 @@ if (googleCredsPresent) {
     res.redirect(`${process.env.FRONTEND_URL}/login?error=google_not_configured`));
 }
 
-// ── Dev / Demo login (development only) ────────────────────────────────────
+// ── Dev / Demo login ────────────────────────────────────────────────────────
 router.post('/dev-login', async (req, res) => {
-  if (process.env.NODE_ENV === 'production')
-    return res.status(403).json({ message: 'Dev login disabled in production' });
 
   const { name = 'Demo Admin', email = 'admin@cloudfi.dev', role = 'system_admin' } = req.body || {};
 
