@@ -138,6 +138,14 @@ export default function Login() {
             </div>
           ))}
         </div>
+
+        <p className="text-muted text-[10px] text-center mt-4">
+          🇮🇳 Built with love in India by{' '}
+          <a href="https://www.timestampindia.com" target="_blank" rel="noopener noreferrer"
+            className="text-primary hover:text-primary-light font-medium transition-colors">
+            Timestamp India
+          </a>
+        </p>
       </div>
     </div>
   );

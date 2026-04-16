@@ -485,8 +485,12 @@ export default function Landing() {
             Built with MongoDB · Express · React · Node.js · Socket.io
           </div>
           <div className="flex items-center gap-2 text-[11px] text-muted">
-            <span className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
-            Deployed on Render · cloudfi.onrender.com
+            <span>🇮🇳</span>
+            Built with love in India by{' '}
+            <a href="https://www.timestampindia.com" target="_blank" rel="noopener noreferrer"
+              className="text-primary hover:text-primary-light font-medium transition-colors">
+              Timestamp India
+            </a>
           </div>
         </div>
       </footer>
