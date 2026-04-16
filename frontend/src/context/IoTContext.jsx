@@ -23,7 +23,8 @@ export function IoTProvider({ children }) {
   useEffect(() => {
     if (!user) return;
 
-    const socket = io({ path: '/socket.io', transports: ['websocket', 'polling'] });
+    const backendUrl = import.meta.env.VITE_API_URL || '';
+    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
     socket.on('connect', () => {
