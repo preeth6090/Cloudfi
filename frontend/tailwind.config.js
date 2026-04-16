@@ -18,11 +18,13 @@ export default {
       },
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
       animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4,0,0.6,1) infinite',
-        'fade-in':    'fadeIn 0.3s ease-in-out',
+        'pulse-slow':    'pulse 3s cubic-bezier(0.4,0,0.6,1) infinite',
+        'fade-in':       'fadeIn 0.3s ease-in-out',
+        'gradientShift': 'gradientShift 4s ease infinite',
       },
       keyframes: {
-        fadeIn: { from: { opacity: 0, transform: 'translateY(4px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+        fadeIn:        { from: { opacity: 0, transform: 'translateY(4px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+        gradientShift: { '0%,100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
       },
     },
   },

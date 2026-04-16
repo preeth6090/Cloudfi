@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { IoTProvider } from '@/context/IoTContext';
 import AppLayout from '@/components/layout/AppLayout';
 
+const Landing        = lazy(() => import('@/pages/Landing'));
 const Login          = lazy(() => import('@/pages/Login'));
 const AuthCallback   = lazy(() => import('@/pages/AuthCallback'));
 const Dashboard      = lazy(() => import('@/pages/Dashboard'));
@@ -37,26 +38,27 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        <Route path="/"              element={<Landing />} />
         <Route path="/login"         element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/" element={
+        {/* Pathless layout — wraps all authenticated routes without changing their URLs */}
+        <Route element={
           <ProtectedRoute>
             <IoTProvider>
               <AppLayout />
             </IoTProvider>
           </ProtectedRoute>
         }>
-          <Route index               element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"    element={<Dashboard />} />
-          <Route path="gateways"     element={<Gateways />} />
-          <Route path="devices"      element={<Devices />} />
-          <Route path="analytics"    element={<Analytics />} />
-          <Route path="digital-twin" element={<DigitalTwin />} />
-          <Route path="maintenance"  element={<Maintenance />} />
-          <Route path="esg"          element={<ESGCarbon />} />
-          <Route path="reports"      element={<Reports />} />
-          <Route path="users"        element={<UserManagement />} />
-          <Route path="settings"     element={<Settings />} />
+          <Route path="/dashboard"    element={<Dashboard />} />
+          <Route path="/gateways"     element={<Gateways />} />
+          <Route path="/devices"      element={<Devices />} />
+          <Route path="/analytics"    element={<Analytics />} />
+          <Route path="/digital-twin" element={<DigitalTwin />} />
+          <Route path="/maintenance"  element={<Maintenance />} />
+          <Route path="/esg"          element={<ESGCarbon />} />
+          <Route path="/reports"      element={<Reports />} />
+          <Route path="/users"        element={<UserManagement />} />
+          <Route path="/settings"     element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
