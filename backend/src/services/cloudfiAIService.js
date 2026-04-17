@@ -1,4 +1,4 @@
-// Galanfi AI Service — consumes FFT + virtual parameters, outputs Anomaly Score
+// CloudFi AI Service — consumes FFT + virtual parameters, outputs Anomaly Score
 // and enriched Digital Twin axes for the Power Quality radar
 
 const { simulateFFT } = require('../utils/fftSimulator');

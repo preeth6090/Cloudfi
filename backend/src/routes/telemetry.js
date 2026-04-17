@@ -6,7 +6,7 @@ const { cacheGet, cacheSet } = require('../config/redis');
 const { storeForwardMiddleware } = require('../middleware/storeForward');
 const { buildVirtualParams } = require('../utils/virtualParameters');
 const { simulateFFT } = require('../utils/fftSimulator');
-const { getPowerQualityTwin } = require('../services/galanfiAIService');
+const { getPowerQualityTwin } = require('../services/cloudfiAIService');
 
 router.use(protect);
 const sfMiddleware = storeForwardMiddleware(Telemetry, AuditLog);

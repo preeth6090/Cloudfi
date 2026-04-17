@@ -5,7 +5,7 @@ const AuditLog = require('../models/AuditLog');
 const { cacheSet } = require('../config/redis');
 const { buildVirtualParams, filterParams } = require('../utils/virtualParameters');
 const { simulateFFT } = require('../utils/fftSimulator');
-const { computeAnomalyScore } = require('../services/galanfiAIService');
+const { computeAnomalyScore } = require('../services/cloudfiAIService');
 
 // Per-device simulation state
 const deviceState = new Map();
@@ -110,7 +110,7 @@ async function tick() {
       healthIndex: +s.healthIndex.toFixed(1),
     };
 
-    // ── Galanfi virtual parameters + FFT ──────────────────────
+    // ── CloudFi virtual parameters + FFT ─────────────────────
     const vParams  = buildVirtualParams(payload);
     const fftData  = simulateFFT({ voltage: payload.voltage, powerFactor: payload.powerFactor });
     const anomaly  = computeAnomalyScore(payload, vParams, fftData);

@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 
 const IoTContext = createContext(null);
 const MAX_HISTORY  = 60;
-const UI_FLUSH_MS  = 150; // batch UI updates to prevent jank on high-freq Galanfi streams
+const UI_FLUSH_MS  = 150; // batch UI updates to prevent jank on high-freq CloudFi streams
 
 export function IoTProvider({ children }) {
   const { user } = useAuth();
@@ -13,7 +13,7 @@ export function IoTProvider({ children }) {
   const [plantSummary, setPlantSummary] = useState({});
   const [alerts,       setAlerts]       = useState([]);
   const [connected,    setConnected]    = useState(false);
-  // Galanfi high-freq power-quality data (separate to avoid re-rendering widgets)
+  // CloudFi high-freq power-quality data (separate to avoid re-rendering widgets)
   const [powerQuality, setPowerQuality] = useState({}); // { [deviceId]: {fft, anomalyScore, ...} }
 
   const socketRef      = useRef(null);
@@ -73,7 +73,7 @@ export function IoTProvider({ children }) {
       // Buffer history point (strip heavy custom field for history to save memory)
       const slim = { ...payload, custom: undefined };
       historyBuf.current[id]   = [...(historyBuf.current[id] || []), slim];
-      // Buffer Galanfi power-quality separately
+      // Buffer CloudFi power-quality separately
       if (payload.custom) {
         pqBuf.current[id] = {
           anomalyScore:    payload.custom.anomalyScore,

@@ -75,7 +75,7 @@ export default function DigitalTwin() {
           <div className="flex items-start justify-between mb-1">
             <div>
               <h3 className="text-text font-medium text-sm">
-                {twinMode === 'asset' ? 'Digital Twin vs Actual Performance' : 'Power Quality Twin — 8-Axis Galanfi Radar'}
+                {twinMode === 'asset' ? 'Digital Twin vs Actual Performance' : 'Power Quality Twin — 8-Axis CloudFi Radar'}
               </h3>
               <p className="text-muted text-xs mt-0.5">
                 {twinMode === 'asset' ? 'Real-time comparison with physics-based model' : 'Harmonics · Power Factor · Signal Integrity · Grid Compliance'}

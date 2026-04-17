@@ -91,11 +91,11 @@ export default function Analytics() {
         </ChartCard>
       </div>
 
-      {/* Signal Health — Galanfi FFT Analysis */}
+      {/* Signal Health — CloudFi FFT Analysis */}
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-text font-medium text-sm">Signal Health — Galanfi 4.0 FFT Analysis</h3>
+            <h3 className="text-text font-medium text-sm">Signal Health — CloudFi FFT Analysis</h3>
             <p className="text-muted text-xs mt-0.5">Harmonic spectrum · THD · Signal integrity per device</p>
           </div>
           <div className="text-[10px] text-muted">{deviceIds.length} device{deviceIds.length !== 1 ? 's' : ''} reporting</div>
