@@ -12,12 +12,29 @@ const { startSimulator } = require('./services/dataSimulator');
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true },
-});
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:4173',
+].filter(Boolean);
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // allow all vercel.app preview URLs for this project
+  if (/https:\/\/cloudfi[^.]*\.vercel\.app$/.test(origin)) return true;
+  return false;
+}
+
+const corsOptions = {
+  origin: (origin, cb) => cb(null, isOriginAllowed(origin)),
+  credentials: true,
+};
+
+const io = new Server(server, { cors: corsOptions });
 
 // ── Middleware ──────────────────────────────────────────────
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '2mb' }));
 app.use(passport.initialize());
 
