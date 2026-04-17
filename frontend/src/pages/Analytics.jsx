@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import api from '@/api/client';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { format } from 'date-fns';
+import { useIoT } from '@/context/IoTContext';
+import SignalHealthSparkline from '@/components/widgets/SignalHealthSparkline';
 
 const TT_STYLE = { background: '#16161f', border: '1px solid #2a2a3a', borderRadius: 8, fontSize: 11 };
 
@@ -9,6 +11,9 @@ export default function Analytics() {
   const [period, setPeriod] = useState('24h');
   const [site, setSite]     = useState('Site A');
   const [data, setData]     = useState([]);
+  const { telemetry, powerQuality } = useIoT();
+
+  const deviceIds = Object.keys(powerQuality).filter(id => powerQuality[id]?.fft);
 
   useEffect(() => {
     api.get(`/telemetry/aggregate/${site}?period=${period}`)
@@ -84,6 +89,32 @@ export default function Analytics() {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
+      </div>
+
+      {/* Signal Health — Galanfi FFT Analysis */}
+      <div className="bg-card border border-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-text font-medium text-sm">Signal Health — Galanfi 4.0 FFT Analysis</h3>
+            <p className="text-muted text-xs mt-0.5">Harmonic spectrum · THD · Signal integrity per device</p>
+          </div>
+          <div className="text-[10px] text-muted">{deviceIds.length} device{deviceIds.length !== 1 ? 's' : ''} reporting</div>
+        </div>
+        {deviceIds.length === 0 ? (
+          <div className="flex items-center justify-center h-20 text-muted text-sm">Awaiting FFT data from simulator…</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {deviceIds.map(id => {
+              const name = telemetry[id]?.name || id;
+              return (
+                <div key={id} className="bg-surface border border-border rounded-xl p-3">
+                  <div className="text-text text-xs font-semibold mb-2 truncate">{name}</div>
+                  <SignalHealthSparkline deviceId={id} />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

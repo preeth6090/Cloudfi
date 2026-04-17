@@ -39,12 +39,13 @@ app.use(express.json({ limit: '2mb' }));
 app.use(passport.initialize());
 
 // ── Routes ──────────────────────────────────────────────────
-app.use('/api/auth',      require('./routes/auth'));
-app.use('/api/gateways',  require('./routes/gateways'));
-app.use('/api/devices',   require('./routes/devices'));
-app.use('/api/telemetry', require('./routes/telemetry'));
-app.use('/api/alerts',    require('./routes/alerts'));
-app.use('/api/users',     require('./routes/users'));
+app.use('/api/auth',           require('./routes/auth'));
+app.use('/api/gateways',       require('./routes/gateways'));
+app.use('/api/devices',        require('./routes/devices'));
+app.use('/api/telemetry',      require('./routes/telemetry'));
+app.use('/api/alerts',         require('./routes/alerts'));
+app.use('/api/users',          require('./routes/users'));
+app.use('/api/gateway-config', require('./routes/gatewayConfig'));
 
 // AI insight endpoint
 const { protect } = require('./middleware/auth');

@@ -1,7 +1,11 @@
 const Device = require('../models/Device');
 const Alert = require('../models/Alert');
 const Telemetry = require('../models/Telemetry');
+const AuditLog = require('../models/AuditLog');
 const { cacheSet } = require('../config/redis');
+const { buildVirtualParams, filterParams } = require('../utils/virtualParameters');
+const { simulateFFT } = require('../utils/fftSimulator');
+const { computeAnomalyScore } = require('../services/galanfiAIService');
 
 // Per-device simulation state
 const deviceState = new Map();
@@ -106,6 +110,21 @@ async function tick() {
       healthIndex: +s.healthIndex.toFixed(1),
     };
 
+    // ── Galanfi virtual parameters + FFT ──────────────────────
+    const vParams  = buildVirtualParams(payload);
+    const fftData  = simulateFFT({ voltage: payload.voltage, powerFactor: payload.powerFactor });
+    const anomaly  = computeAnomalyScore(payload, vParams, fftData);
+
+    // attach to payload as custom field (no schema change)
+    payload.custom = {
+      virtualParams: filterParams(vParams),   // 100+ power params
+      fft:           fftData,
+      anomalyScore:  anomaly.anomalyScore,
+      anomalySeverity: anomaly.severity,
+      protocol:      vParams.protocolMeta?.protocol,
+      protocolMeta:  vParams.protocolMeta,
+    };
+
     // Cache latest reading
     await cacheSet(`telemetry:latest:${id}`, payload, 15);
 
@@ -126,10 +145,19 @@ async function tick() {
 
     // Persist every 30 seconds (15 ticks of 2 s)
     if (Math.random() < 0.067) {
-      Telemetry.create({
+      const doc = {
         timestamp: new Date(),
         metadata: { deviceId: device._id, site: device.site, assetType: device.assetType },
         ...payload,
+      };
+      Telemetry.create(doc).catch(() => {});
+      // No-Delete audit trail
+      AuditLog.create({
+        receivedAt: doc.timestamp, deviceId: device._id,
+        site: device.site, assetType: device.assetType,
+        source: 'simulator',
+        protocol: payload.custom?.protocol || 'simulator',
+        payload: doc,
       }).catch(() => {});
     }
   }
