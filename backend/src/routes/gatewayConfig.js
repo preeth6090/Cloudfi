@@ -3,7 +3,7 @@
 
 const router = require('express').Router();
 const { protect, requireRole } = require('../middleware/auth');
-const { cacheGet, cacheSet } = require('../config/redis');
+const { cacheGet, cacheSet } = require('../config/cache');
 const { PARAM_GROUPS } = require('../utils/virtualParameters');
 
 router.use(protect);

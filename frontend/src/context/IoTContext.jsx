@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { io } from 'socket.io-client';
+import api from '@/api/client';
 import { useAuth } from './AuthContext';
 
 const IoTContext = createContext(null);
+const POLL_MS      = 2000;
 const MAX_HISTORY  = 60;
 const UI_FLUSH_MS  = 150; // batch UI updates to prevent jank on high-freq CloudFi streams
 
@@ -16,15 +17,13 @@ export function IoTProvider({ children }) {
   // CloudFi high-freq power-quality data (separate to avoid re-rendering widgets)
   const [powerQuality, setPowerQuality] = useState({}); // { [deviceId]: {fft, anomalyScore, ...} }
 
-  const socketRef      = useRef(null);
   const telemetryBuf   = useRef({});  // accumulate between flushes
   const historyBuf     = useRef({});
   const pqBuf          = useRef({});
   const flushTimer     = useRef(null);
 
-  const joinSite = useCallback((site) => {
-    socketRef.current?.emit('join_site', site);
-  }, []);
+  // Kept for compatibility: the server already filters by the user's site access.
+  const joinSite = useCallback(() => {}, []);
 
   // Flush batched state to React every UI_FLUSH_MS
   function scheduleFlush() {
@@ -53,21 +52,18 @@ export function IoTProvider({ children }) {
     }, UI_FLUSH_MS);
   }
 
+  // Poll /api/live every POLL_MS (replaces the old socket.io stream).
   useEffect(() => {
     if (!user) return;
-    const backendUrl = import.meta.env.VITE_API_URL || '';
-    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
-    socketRef.current = socket;
+    let stopped  = false;
+    let since    = null;   // server time of the previous poll, for new alerts
+    let pollTimer = null;
+    const lastTs = {};     // last reading timestamp per device, to skip repeats
 
-    socket.on('connect', () => {
-      setConnected(true);
-      socket.emit('join_site', 'all');
-      (user.siteAccess || []).forEach(s => s !== 'all' && socket.emit('join_site', s));
-    });
-    socket.on('disconnect', () => setConnected(false));
-
-    socket.on('telemetry', (payload) => {
+    function onTelemetry(payload) {
       const id = payload.deviceId;
+      if (lastTs[id] === payload.timestamp) return;
+      lastTs[id] = payload.timestamp;
       // Buffer core telemetry
       telemetryBuf.current[id] = payload;
       // Buffer history point (strip heavy custom field for history to save memory)
@@ -84,19 +80,41 @@ export function IoTProvider({ children }) {
           protocolMeta:    payload.custom.protocolMeta,
         };
       }
-      scheduleFlush();
-    });
+    }
 
-    socket.on('plant_summary', (summary) => {
-      setPlantSummary(prev => ({ ...prev, [summary.site]: summary }));
-    });
-    socket.on('new_alert', (alert) => {
-      setAlerts(prev => [alert, ...prev].slice(0, 100));
-    });
+    async function poll() {
+      try {
+        const { data } = await api.get('/live', { params: since ? { since } : {} });
+        if (stopped) return;
+        since = data.serverTime;
+        setConnected(true);
+        data.telemetry.forEach(onTelemetry);
+        if (data.telemetry.length) scheduleFlush();
+        if (data.plantSummary.length) {
+          setPlantSummary(prev => {
+            const next = { ...prev };
+            data.plantSummary.forEach(s => { next[s.site] = s; });
+            return next;
+          });
+        }
+        if (data.alerts.length) {
+          setAlerts(prev => {
+            const seen  = new Set(prev.map(a => a._id));
+            const fresh = data.alerts.filter(a => !seen.has(a._id));
+            return [...fresh, ...prev].slice(0, 100);
+          });
+        }
+      } catch {
+        if (!stopped) setConnected(false);
+      } finally {
+        if (!stopped) pollTimer = setTimeout(poll, POLL_MS);
+      }
+    }
+    poll();
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      stopped = true;
+      clearTimeout(pollTimer);
       if (flushTimer.current) clearTimeout(flushTimer.current);
     };
   }, [user]);
