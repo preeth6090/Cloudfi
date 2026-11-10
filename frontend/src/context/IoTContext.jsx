@@ -115,7 +115,10 @@ export function IoTProvider({ children }) {
     return () => {
       stopped = true;
       clearTimeout(pollTimer);
+      // Reset the ref too, otherwise scheduleFlush thinks a flush is still pending
+      // and the widgets never update after the effect re-runs.
       if (flushTimer.current) clearTimeout(flushTimer.current);
+      flushTimer.current = null;
     };
   }, [user]);
 
