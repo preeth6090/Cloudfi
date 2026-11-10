@@ -2,6 +2,7 @@ services:
   - type: web
     name: cloudfi-backend
     runtime: node
+    plan: free
     rootDir: backend
     buildCommand: npm install
     startCommand: node src/server.js
@@ -15,4 +16,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        sync: false
+        value: https://cloudfi.timestampindia.tech

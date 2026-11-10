@@ -16,7 +16,7 @@ async function connectDB() {
             metaField: 'metadata',
             granularity: 'seconds',
           },
-          expireAfterSeconds: 60 * 60 * 24 * 90, // 90 days
+          expireAfterSeconds: 60 * 60 * 24 * 7, // 7 days, fits the free 512 MB Atlas tier
         });
         console.log('Time-series collection created');
       } catch (e) {
