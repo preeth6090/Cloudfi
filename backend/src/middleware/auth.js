@@ -4,14 +4,15 @@ const User = require('../models/User');
 async function protect(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return res.status(401).json({ message: 'No token' });
+  let decoded;
   try {
-    const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-__v');
-    if (!req.user || !req.user.isActive) return res.status(401).json({ message: 'Unauthorized' });
-    next();
+    decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
   } catch {
-    res.status(401).json({ message: 'Invalid token' });
+    return res.status(401).json({ message: 'Invalid token' });
   }
+  req.user = await User.findById(decoded.id);
+  if (!req.user || !req.user.isActive) return res.status(401).json({ message: 'Unauthorized' });
+  next();
 }
 
 function requireRole(...roles) {
@@ -21,4 +22,9 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { protect, requireRole };
+// Sites the user may see, or null for all sites.
+function siteFilter(user) {
+  return user.siteAccess.includes('all') ? null : user.siteAccess;
+}
+
+module.exports = { protect, requireRole, siteFilter };

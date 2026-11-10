@@ -1,16 +1,22 @@
-const Device = require('../models/Device');
-const Alert = require('../models/Alert');
-const Telemetry = require('../models/Telemetry');
-const AuditLog = require('../models/AuditLog');
-const { cacheSet } = require('../config/redis');
+// Demo data simulator.
+// Serverless functions can't run a background timer, so the simulator advances one
+// step (a "tick") when the dashboard polls /api/live, at most once every 2 seconds.
+// Its state lives in the kv table so every function instance continues the same run.
+const { q } = require('../config/db');
+const { cacheGet, cacheSetMany } = require('../config/cache');
 const { buildVirtualParams, filterParams } = require('../utils/virtualParameters');
 const { simulateFFT } = require('../utils/fftSimulator');
-const { computeAnomalyScore } = require('../services/cloudfiAIService');
+const { computeAnomalyScore } = require('./cloudfiAIService');
 
-// Per-device simulation state
-const deviceState = new Map();
+const TICK_MS = 2000;
+const PERSIST_EVERY_MS = 30000;      // save readings to the telemetry table every 30 s
+const CLEANUP_EVERY_MS = 3600000;    // prune old rows hourly
+const TELEMETRY_RETENTION_DAYS = 7;  // keeps the free Neon tier small
+const AUDIT_RETENTION_DAYS = 14;
+const LATEST_TTL_S = 600;
+const ALERT_COOLDOWN_MS = 300000;    // 5 minutes per device + parameter
 
-function initState(deviceId, assetType) {
+function initState(assetType) {
   const base = {
     ball_mill:      { power: 1200, temp: 65, vibration: 2.1, rpm: 980, efficiency: 88 },
     boiler:         { power: 800,  temp: 185, pressure: 12, efficiency: 86, steamConsumption: 380 },
@@ -48,37 +54,53 @@ const DEMO_DEVICES = [
 ];
 
 async function seedDemoDevices() {
-  const count = await Device.countDocuments();
-  if (count > 0) return;
-  await Device.insertMany(DEMO_DEVICES.map(d => ({ ...d, status: 'online', healthIndex: 90 + Math.random() * 8 })));
-  console.log(`Seeded ${DEMO_DEVICES.length} demo devices`);
+  // Only seeds an empty table; the advisory lock stops two cold starts seeding twice.
+  await q(
+    `WITH lock AS (SELECT pg_try_advisory_xact_lock(424242) AS ok)
+     INSERT INTO devices (name, asset_type, site, status, health_index)
+     SELECT d.name, d.asset_type, d.site, 'online', 90 + random() * 8
+     FROM unnest($1::text[], $2::text[], $3::text[]) AS d(name, asset_type, site), lock
+     WHERE lock.ok AND NOT EXISTS (SELECT 1 FROM devices)`,
+    [DEMO_DEVICES.map((d) => d.name), DEMO_DEVICES.map((d) => d.assetType), DEMO_DEVICES.map((d) => d.site)]
+  );
 }
 
-let io = null;
-let simulatorInterval = null;
+// Claim the next tick. Returns true for exactly one caller per 2-second window.
+async function claimTick() {
+  const rows = await q(
+    `INSERT INTO kv (key, value, expires_at)
+     VALUES ('sim:lock', 'true', now() + make_interval(secs => $1::double precision))
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+     WHERE kv.expires_at IS NULL OR kv.expires_at <= now()
+     RETURNING key`,
+    [(TICK_MS - 100) / 1000]
+  );
+  return rows.length > 0;
+}
 
-async function startSimulator(socketIo) {
-  io = socketIo;
-  await seedDemoDevices();
-  simulatorInterval = setInterval(tick, 2000);
-  console.log('Data simulator started (2 s tick)');
+async function runTickIfDue() {
+  if (!(await claimTick())) return false;
+  await tick();
+  return true;
 }
 
 async function tick() {
-  let devices;
-  try {
-    // Simulate ALL devices – mark them online so the frontend shows live data
-    devices = await Device.find({}).lean();
-    if (devices.length === 0) return;
-    // Batch-mark all as online each tick (lightweight upsert avoided; just in-memory)
-  } catch { return; }
+  const devices = await q('SELECT id, name, asset_type, site FROM devices');
+  if (!devices.length) return;
 
+  const state = (await cacheGet('sim:state')) || {};
+  state.devices = state.devices || {};
+  state.cooldown = state.cooldown || {};
+  const now = Date.now();
+
+  const payloads = [];
   const siteAgg = {};
+  const alertsToCreate = [];
 
   for (const device of devices) {
-    const id = device._id.toString();
-    if (!deviceState.has(id)) deviceState.set(id, initState(id, device.assetType));
-    const s = deviceState.get(id);
+    const id = device.id;
+    if (!state.devices[id]) state.devices[id] = initState(device.asset_type);
+    const s = state.devices[id];
 
     // Drift all numeric fields slowly
     for (const k of Object.keys(s)) {
@@ -92,9 +114,9 @@ async function tick() {
     const payload = {
       deviceId: id,
       site: device.site,
-      assetType: device.assetType,
+      assetType: device.asset_type,
       name: device.name,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(now).toISOString(),
       power: +s.power.toFixed(2),
       current: +s.current.toFixed(2),
       voltage: +s.voltage.toFixed(1),
@@ -110,82 +132,84 @@ async function tick() {
       healthIndex: +s.healthIndex.toFixed(1),
     };
 
-    // ── CloudFi virtual parameters + FFT ─────────────────────
-    const vParams  = buildVirtualParams(payload);
-    const fftData  = simulateFFT({ voltage: payload.voltage, powerFactor: payload.powerFactor });
-    const anomaly  = computeAnomalyScore(payload, vParams, fftData);
+    // CloudFi virtual parameters + FFT
+    const vParams = buildVirtualParams(payload);
+    const fftData = simulateFFT({ voltage: payload.voltage, powerFactor: payload.powerFactor });
+    const anomaly = computeAnomalyScore(payload, vParams, fftData);
 
-    // attach to payload as custom field (no schema change)
     payload.custom = {
-      virtualParams: filterParams(vParams),   // 100+ power params
-      fft:           fftData,
-      anomalyScore:  anomaly.anomalyScore,
+      virtualParams:   filterParams(vParams),
+      fft:             fftData,
+      anomalyScore:    anomaly.anomalyScore,
       anomalySeverity: anomaly.severity,
-      protocol:      vParams.protocolMeta?.protocol,
-      protocolMeta:  vParams.protocolMeta,
+      protocol:        vParams.protocolMeta?.protocol,
+      protocolMeta:    vParams.protocolMeta,
     };
+    payloads.push(payload);
 
-    // Cache latest reading
-    await cacheSet(`telemetry:latest:${id}`, payload, 15);
-
-    // Emit to site room
-    io.to(`site:${device.site}`).emit('telemetry', payload);
-    io.to('site:all').emit('telemetry', payload);
-
-    // Aggregate per site
-    if (!siteAgg[device.site]) siteAgg[device.site] = { totalPower: 0, count: 0, avgHealth: 0, avgEfficiency: 0 };
-    siteAgg[device.site].totalPower += payload.power;
-    siteAgg[device.site].avgHealth += payload.healthIndex;
-    siteAgg[device.site].avgEfficiency += payload.efficiency;
-    siteAgg[device.site].count++;
+    const agg = siteAgg[device.site] || (siteAgg[device.site] = { totalPower: 0, count: 0, avgHealth: 0, avgEfficiency: 0 });
+    agg.totalPower += payload.power;
+    agg.avgHealth += payload.healthIndex;
+    agg.avgEfficiency += payload.efficiency;
+    agg.count++;
 
     // Detect anomalies
-    if (payload.vibration > 5.5) maybeCreateAlert(device, payload, 'vibration', payload.vibration);
-    if (payload.temperature > 150 && device.assetType !== 'boiler') maybeCreateAlert(device, payload, 'temperature', payload.temperature);
-
-    // Persist every 30 seconds (15 ticks of 2 s)
-    if (Math.random() < 0.067) {
-      const doc = {
-        timestamp: new Date(),
-        metadata: { deviceId: device._id, site: device.site, assetType: device.assetType },
-        ...payload,
-      };
-      Telemetry.create(doc).catch(() => {});
-      // No-Delete audit trail
-      AuditLog.create({
-        receivedAt: doc.timestamp, deviceId: device._id,
-        site: device.site, assetType: device.assetType,
-        source: 'simulator',
-        protocol: payload.custom?.protocol || 'simulator',
-        payload: doc,
-      }).catch(() => {});
-    }
+    if (payload.vibration > 5.5) alertsToCreate.push([device, 'vibration', payload.vibration]);
+    if (payload.temperature > 150 && device.asset_type !== 'boiler') alertsToCreate.push([device, 'temperature', payload.temperature]);
   }
 
-  // Emit plant-wide summary per site
+  // Latest readings + plant summaries, one write
+  const entries = payloads.map((p) => [`telemetry:latest:${p.deviceId}`, p]);
   for (const [site, agg] of Object.entries(siteAgg)) {
-    const summary = {
+    entries.push([`plant:${site}`, {
       site,
       totalPower: +agg.totalPower.toFixed(1),
       avgHealthIndex: +(agg.avgHealth / agg.count).toFixed(1),
       avgEfficiency: +(agg.avgEfficiency / agg.count).toFixed(1),
       deviceCount: agg.count,
-      timestamp: new Date().toISOString(),
-    };
-    io.to(`site:${site}`).emit('plant_summary', summary);
-    io.to('site:all').emit('plant_summary', summary);
-    await cacheSet(`plant:${site}`, summary, 10);
+      timestamp: new Date(now).toISOString(),
+    }]);
+  }
+
+  const Telemetry = require('../models/Telemetry');
+  const AuditLog = require('../models/AuditLog');
+
+  const persist = now - (state.lastPersist || 0) >= PERSIST_EVERY_MS;
+  const cleanup = now - (state.lastCleanup || 0) >= CLEANUP_EVERY_MS;
+  if (persist) state.lastPersist = now;
+  if (cleanup) state.lastCleanup = now;
+
+  for (const [device, parameter, value] of alertsToCreate) {
+    const key = `${device.id}:${parameter}`;
+    if (now - (state.cooldown[key] || 0) < ALERT_COOLDOWN_MS) continue;
+    state.cooldown[key] = now;
+    await createAlert(device, parameter, value);
+  }
+
+  await cacheSetMany(entries, LATEST_TTL_S);
+  await cacheSetMany([['sim:state', state]], null);
+
+  if (persist) {
+    // Store a slim copy: the full virtual-parameter set is only needed live.
+    const docs = payloads.map((p) => ({
+      ...p,
+      custom: { anomalyScore: p.custom.anomalyScore, anomalySeverity: p.custom.anomalySeverity, protocol: p.custom.protocol },
+    }));
+    await Telemetry.insertMany(docs);
+    await AuditLog.insertMany(docs.map((d) => ({
+      receivedAt: d.timestamp, deviceId: d.deviceId, site: d.site, assetType: d.assetType,
+      source: 'simulator', protocol: d.custom.protocol || 'simulator', payload: d,
+    })));
+  }
+
+  if (cleanup) {
+    await Telemetry.deleteOlderThan(TELEMETRY_RETENTION_DAYS);
+    await AuditLog.deleteOlderThan(AUDIT_RETENTION_DAYS);
+    await q('DELETE FROM kv WHERE expires_at < now()');
   }
 }
 
-const alertCooldown = new Map();
-
-async function maybeCreateAlert(device, payload, parameter, value) {
-  const key = `${device._id}:${parameter}`;
-  const last = alertCooldown.get(key) || 0;
-  if (Date.now() - last < 300000) return; // 5-min cooldown
-  alertCooldown.set(key, Date.now());
-
+async function createAlert(device, parameter, value) {
   const messages = {
     vibration: {
       message: `High vibration detected on ${device.name}: ${value.toFixed(2)} mm/s (threshold: 5.5 mm/s)`,
@@ -198,11 +222,11 @@ async function maybeCreateAlert(device, payload, parameter, value) {
       wastage: 850,
     },
   };
-
   const info = messages[parameter] || { message: `Anomaly on ${device.name}`, recommendation: 'Inspect device.', wastage: 500 };
 
-  const alert = await Alert.create({
-    device: device._id,
+  const Alert = require('../models/Alert');
+  await Alert.create({
+    device: device.id,
     site: device.site,
     type: 'predictive',
     severity: value > 7 ? 'critical' : 'warning',
@@ -211,11 +235,6 @@ async function maybeCreateAlert(device, payload, parameter, value) {
     recommendation: info.recommendation,
     estimatedWastage: info.wastage,
   });
-
-  if (io) {
-    io.to(`site:${device.site}`).emit('new_alert', alert);
-    io.to('site:all').emit('new_alert', alert);
-  }
 }
 
-module.exports = { startSimulator };
+module.exports = { seedDemoDevices, runTickIfDue };

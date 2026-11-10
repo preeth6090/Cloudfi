@@ -1,13 +1,11 @@
 const router = require('express').Router();
 const Device = require('../models/Device');
-const { protect } = require('../middleware/auth');
+const { protect, siteFilter } = require('../middleware/auth');
 
 router.use(protect);
 
 router.get('/', async (req, res) => {
-  const query = req.user.siteAccess.includes('all') ? {} : { site: { $in: req.user.siteAccess } };
-  const devices = await Device.find(query).populate('gateway', 'name ipAddress status').sort('-createdAt');
-  res.json(devices);
+  res.json(await Device.list(siteFilter(req.user)));
 });
 
 router.post('/', async (req, res) => {
@@ -16,22 +14,19 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const device = await Device.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  const { createdBy, ...body } = req.body || {};
+  const device = await Device.update(req.params.id, body);
   if (!device) return res.status(404).json({ message: 'Not found' });
   res.json(device);
 });
 
 router.delete('/:id', async (req, res) => {
-  await Device.findByIdAndDelete(req.params.id);
+  await Device.remove(req.params.id);
   res.json({ message: 'Deleted' });
 });
 
 router.patch('/:id/register-map', async (req, res) => {
-  const device = await Device.findByIdAndUpdate(
-    req.params.id,
-    { registerMap: req.body.registerMap },
-    { new: true }
-  );
+  const device = await Device.update(req.params.id, { registerMap: req.body.registerMap });
   res.json(device);
 });
 

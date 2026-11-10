@@ -447,7 +447,7 @@ export default function Landing() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
               { target: 95,    suffix: '%',  label: 'Uptime SLA',          sub: 'resilient architecture'  },
-              { target: 2,     suffix: 's',  label: 'Telemetry latency',   sub: 'socket.io streaming'     },
+              { target: 2,     suffix: 's',  label: 'Telemetry latency',   sub: 'live 2 s refresh'     },
               { target: 8,     suffix: '',   label: 'Demo devices seeded', sub: 'on first boot'           },
               { target: 15000, suffix: '₹', label: 'Daily savings/device', sub: 'via bearing alert'       },
             ].map(({ target, suffix, label, sub }) => (

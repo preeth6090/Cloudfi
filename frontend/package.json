@@ -16,8 +16,7 @@
     "react-grid-layout": "^1.4.4",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.24.0",
-    "recharts": "^2.12.7",
-    "socket.io-client": "^4.7.5"
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

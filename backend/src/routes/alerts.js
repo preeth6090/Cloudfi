@@ -1,34 +1,25 @@
 const router = require('express').Router();
 const Alert = require('../models/Alert');
-const { protect } = require('../middleware/auth');
+const { protect, siteFilter } = require('../middleware/auth');
 
 router.use(protect);
 
 router.get('/', async (req, res) => {
-  const query = req.user.siteAccess.includes('all') ? {} : { site: { $in: req.user.siteAccess } };
-  if (req.query.unacked === 'true') query.acknowledged = false;
-  const alerts = await Alert.find(query)
-    .populate('device', 'name assetType')
-    .sort('-createdAt')
-    .limit(100);
+  const alerts = await Alert.list({
+    sites: siteFilter(req.user),
+    unacked: req.query.unacked === 'true',
+    limit: 100,
+  });
   res.json(alerts);
 });
 
 router.patch('/:id/ack', async (req, res) => {
-  const alert = await Alert.findByIdAndUpdate(
-    req.params.id,
-    { acknowledged: true, acknowledgedBy: req.user._id },
-    { new: true }
-  );
+  const alert = await Alert.acknowledge(req.params.id, req.user._id);
   res.json(alert);
 });
 
 router.patch('/:id/resolve', async (req, res) => {
-  const alert = await Alert.findByIdAndUpdate(
-    req.params.id,
-    { acknowledged: true, resolvedAt: new Date(), acknowledgedBy: req.user._id },
-    { new: true }
-  );
+  const alert = await Alert.acknowledge(req.params.id, req.user._id, { resolve: true });
   res.json(alert);
 });
 

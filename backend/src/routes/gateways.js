@@ -1,13 +1,11 @@
 const router = require('express').Router();
 const Gateway = require('../models/Gateway');
-const { protect } = require('../middleware/auth');
+const { protect, siteFilter } = require('../middleware/auth');
 
 router.use(protect);
 
 router.get('/', async (req, res) => {
-  const query = req.user.siteAccess.includes('all') ? {} : { site: { $in: req.user.siteAccess } };
-  const gateways = await Gateway.find(query).sort('-createdAt');
-  res.json(gateways);
+  res.json(await Gateway.list(siteFilter(req.user)));
 });
 
 router.post('/', async (req, res) => {
@@ -16,13 +14,14 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const gw = await Gateway.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const { createdBy, ...body } = req.body || {};
+  const gw = await Gateway.update(req.params.id, body);
   if (!gw) return res.status(404).json({ message: 'Not found' });
   res.json(gw);
 });
 
 router.delete('/:id', async (req, res) => {
-  await Gateway.findByIdAndDelete(req.params.id);
+  await Gateway.remove(req.params.id);
   res.json({ message: 'Deleted' });
 });
 
